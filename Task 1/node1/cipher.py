@@ -1,8 +1,6 @@
 import os
 
-
 BLOCK_SIZE = 8
-
 
 IP = [
     58, 50, 42, 34, 26, 18, 10, 2,  60, 52, 44, 36, 28, 20, 12, 4,
@@ -97,9 +95,7 @@ S_BOXES = [
     ]
 ]
 
-
 def bytes_to_bits(data):
-    """Mengubah bytes menjadi list bit [0, 1]."""
     bits = []
     for byte in data:
         for i in range(7, -1, -1):
@@ -107,9 +103,8 @@ def bytes_to_bits(data):
     return bits
 
 def bits_to_bytes(bits):
-    """Mengubah list bit [0, 1] menjadi bytes."""
     if len(bits) % 8 != 0:
-        raise ValueError("Jumlah bit harus merupakan kelipatan 8.")
+        raise ValueError("Length of bits must be a multiple of 8")
     byte_array = bytearray()
     for i in range(0, len(bits), 8):
         byte = 0
@@ -119,23 +114,19 @@ def bits_to_bytes(bits):
     return bytes(byte_array)
 
 def permute(bits, table):
-    """Melakukan permutasi bit berdasarkan tabel indeks (1-based)."""
     return [bits[p - 1] for p in table]
 
 def xor_bits(bits1, bits2):
-    """Operasi XOR antara 2 list bit."""
     if len(bits1) != len(bits2):
-        raise ValueError("Kedua input XOR harus memiliki panjang yang sama.")
+        raise ValueError("Length of both input lists must be the same.")
     return [b1 ^ b2 for b1, b2 in zip(bits1, bits2)]
 
 def left_shift(bits, n):
-    """Pergeseran bit ke kiri secara sirkular."""
     return bits[n:] + bits[:n]
 
 def generate_subkeys(key_bytes):
-    """Menghasilkan 16 subkey (masing-masing 48 bit) dari kunci 8 byte."""
     if not isinstance(key_bytes, bytes) or len(key_bytes) != BLOCK_SIZE:
-        raise ValueError("Kunci DES harus tepat 8 byte (64 bit, 56 bit efektif).")
+        raise ValueError("DES key must be exactly 8 bytes long.")
     key_bits = bytes_to_bits(key_bytes)
     permuted_key = permute(key_bits, PC1)
     
@@ -152,7 +143,6 @@ def generate_subkeys(key_bytes):
 
 
 def feistel_function(r_bits, subkey):
-    """Fungsi Feistel f(R, K): Expansion -> XOR -> S-Box -> Permutation P."""
     expanded_r = permute(r_bits, E_TABLE)
     xored = xor_bits(expanded_r, subkey)
     
@@ -170,11 +160,8 @@ def feistel_function(r_bits, subkey):
 
 
 def des_process_block(block_bits, subkeys):
-    """Memproses 1 blok (64-bit) melalui Initial Permutation, 16 Round, dan Final Permutation."""
     if len(block_bits) != 64:
-        raise ValueError("Satu blok DES harus tepat 64 bit.")
-    if len(subkeys) != 16 or any(len(subkey) != 48 for subkey in subkeys):
-        raise ValueError("DES membutuhkan 16 subkey, masing-masing 48 bit.")
+        raise ValueError("DES block must be exactly 64 bits long.")
     permuted_block = permute(block_bits, IP)
     L = permuted_block[:32]
     R = permuted_block[32:]
@@ -189,68 +176,49 @@ def des_process_block(block_bits, subkeys):
 
 
 def pkcs7_pad(data, block_size=BLOCK_SIZE):
-    """Menambahkan padding PKCS#7."""
     if not 1 <= block_size <= 255:
-        raise ValueError("Ukuran blok PKCS#7 harus berada di antara 1 dan 255 byte.")
+        raise ValueError("Block size must be between 1 and 255.")
     pad_len = block_size - (len(data) % block_size)
     return data + bytes([pad_len] * pad_len)
 
 
 def pkcs7_unpad(data, block_size=BLOCK_SIZE):
-    """Menghapus sekaligus memvalidasi padding PKCS#7."""
     if not data or len(data) % block_size != 0:
-        raise ValueError("Data berpadding harus tidak kosong dan berukuran kelipatan blok.")
+        raise ValueError("Data length must be a multiple of the block size for PKCS#7 unpadding.")
 
     pad_len = data[-1]
-    if pad_len < 1 or pad_len > block_size:
-        raise ValueError("Padding PKCS#7 tidak valid.")
-    if data[-pad_len:] != bytes([pad_len]) * pad_len:
-        raise ValueError("Padding PKCS#7 tidak valid.")
     return data[:-pad_len]
 
 
-def _normalise_key(key):
-    """Mengubah key teks/bytes menjadi key DES yang panjangnya tepat 8 byte."""
+def normalise_key(key):
     if isinstance(key, str):
         key_bytes = key.encode("utf-8")
     elif isinstance(key, bytes):
         key_bytes = key
     else:
-        raise TypeError("Kunci harus berupa str atau bytes.")
+        raise TypeError("Key must be a string or bytes.")
 
-    if len(key_bytes) != BLOCK_SIZE:
-        raise ValueError(
-            "Kunci DES harus tepat 8 byte setelah encoding UTF-8; "
-            "kunci tidak akan dipotong atau ditambah otomatis."
-        )
     return key_bytes
 
 
-def _xor_bytes(left, right):
+def xor_bytes(left, right):
     if len(left) != len(right):
-        raise ValueError("Kedua input XOR harus memiliki panjang yang sama.")
+        raise ValueError("Both XOR inputs must have the same length.")
     return bytes(a ^ b for a, b in zip(left, right))
 
 
-def _crypt_block(block, subkeys):
+def crypt_block(block, subkeys):
     if len(block) != BLOCK_SIZE:
-        raise ValueError("Satu blok DES harus tepat 8 byte.")
+        raise ValueError("Block must be exactly 8 bytes long.")
     result_bits = des_process_block(bytes_to_bits(block), subkeys)
     return bits_to_bytes(result_bits)
 
 
 def encrypt(plaintext, key):
-    """
-    Mengenkripsi teks dengan DES-CBC dan padding PKCS#7.
-
-    Nilai yang dikembalikan adalah hex dari IV || ciphertext. IV bukan key dan
-    boleh dikirim bersama ciphertext. Implementasi DES dan CBC dibuat manual;
-    os.urandom hanya digunakan untuk membuat IV acak.
-    """
     if not isinstance(plaintext, str):
-        raise TypeError("Plaintext harus berupa str.")
+        raise TypeError("Plaintext must be a string.")
 
-    key_bytes = _normalise_key(key)
+    key_bytes = normalise_key(key)
     subkeys = generate_subkeys(key_bytes)
     iv = os.urandom(BLOCK_SIZE)
     padded_bytes = pkcs7_pad(plaintext.encode("utf-8"))
@@ -259,7 +227,7 @@ def encrypt(plaintext, key):
     previous = iv
     for i in range(0, len(padded_bytes), BLOCK_SIZE):
         block = padded_bytes[i : i + BLOCK_SIZE]
-        encrypted_block = _crypt_block(_xor_bytes(block, previous), subkeys)
+        encrypted_block = crypt_block(xor_bytes(block, previous), subkeys)
         ciphertext_bytes.extend(encrypted_block)
         previous = encrypted_block
 
@@ -267,21 +235,12 @@ def encrypt(plaintext, key):
 
 
 def decrypt(ciphertext_hex, key):
-    """Mendekripsi hex berformat IV || ciphertext dari fungsi encrypt()."""
-    if not isinstance(ciphertext_hex, str):
-        raise TypeError("Ciphertext harus berupa string hexadecimal.")
 
-    key_bytes = _normalise_key(key)
+    key_bytes = normalise_key(key)
     try:
         encrypted_data = bytes.fromhex(ciphertext_hex)
     except ValueError as exc:
-        raise ValueError("Ciphertext bukan hexadecimal yang valid.") from exc
-
-    # Minimal: 8 byte IV dan 8 byte ciphertext; total harus kelipatan blok.
-    if len(encrypted_data) < 2 * BLOCK_SIZE or len(encrypted_data) % BLOCK_SIZE != 0:
-        raise ValueError(
-            "Ciphertext harus berisi IV 8 byte diikuti minimal satu blok 8 byte."
-        )
+        raise ValueError("Ciphertext is not valid hexadecimal.") from exc
 
     iv = encrypted_data[:BLOCK_SIZE]
     ciphertext_bytes = encrypted_data[BLOCK_SIZE:]
@@ -291,7 +250,7 @@ def decrypt(ciphertext_hex, key):
     previous = iv
     for i in range(0, len(ciphertext_bytes), BLOCK_SIZE):
         block = ciphertext_bytes[i : i + BLOCK_SIZE]
-        decrypted_block = _xor_bytes(_crypt_block(block, subkeys), previous)
+        decrypted_block = xor_bytes(crypt_block(block, subkeys), previous)
         decrypted_bytes.extend(decrypted_block)
         previous = block
 
@@ -299,15 +258,15 @@ def decrypt(ciphertext_hex, key):
     try:
         return unpadded_bytes.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError("Hasil dekripsi bukan teks UTF-8 yang valid.") from exc
+        raise ValueError("Decrypted result is not valid UTF-8 text.") from exc
 
 
 if __name__ == "__main__":
     SECRET_KEY = "MYSECRET"
     MESSAGE = "Hello, World!"
 
-    print(f"Plaintext   : {MESSAGE}")
-    encrypted_hex = encrypt(MESSAGE, SECRET_KEY)
-    print(f"Ciphertext  : {encrypted_hex}")
-    decrypted_text = decrypt(encrypted_hex, SECRET_KEY)
+    # print(f"Plaintext   : {MESSAGE}")
+    # encrypted_hex = encrypt(MESSAGE, SECRET_KEY)
+    # print(f"Ciphertext  : {encrypted_hex}")
+    decrypted_text = decrypt("7952895ccd013f40f5906d876cbfe9b8", SECRET_KEY)
     print(f"Decrypted   : {decrypted_text}")
